@@ -1,0 +1,35 @@
+# =================================================================
+# .gitignore — MS1: PDF API Gateway (pdfapigateway)
+# =================================================================
+
+# --- Variables de entorno y secretos (12-Factor App) ---
+.env
+.env.*
+!.env.example
+
+# --- Control de versiones ---
+.git
+.github
+
+# --- Entornos locales y artefactos de Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.egg-info/
+build/
+dist/
+
+# --- Docker y despliegue individual (pertenecen a cada repo, no a la imagen) ---
+# El Dockerfile de MS1 SÍ se versiona en este repositorio; no ignorarlo
+!.Dockerfile
+.dockerignore
+docker-compose*.yml
