@@ -1,17 +1,38 @@
 """Aplicación FastAPI para MS1 (PDF API Gateway).
 
-Punto de entrada único para la gestión de documentos PDF. Deriva las
-solicitudes hacia MS3 (PDF CRUD Service) mediante el router de proxy
-implementado en src.api.gateway.
+Orden de inicialización (deliberado):
 
-La lógica de negocio permanece en MS3; este gateway no valida PDFs, no
-calcula hashes, no consulta MongoDB y no invoca directamente a MS2.
+1. Se importa la configuración (pydantic-settings) y el módulo de
+   logging centralizado (solo biblioteca estándar).
+2. Se configura el logging con configure_logging() ANTES de importar
+   FastAPI y el resto de dependencias de la aplicación. Esto es necesario
+   porque logging.config.dictConfig() cierra los handlers registrados en el
+   proceso: si se ejecutara más tarde, cerraría los handlers que hubiera
+   registrado cualquier integración externa (APM, OpenTelemetry, etc.).
+3. Recién entonces se importan FastAPI y los módulos de la aplicación, que
+   ya quedan con el logging configurado.
+
+A partir de este punto, toda la salida de logs del servicio es JSON por
+stdout/stderr y no existe ningún mensaje de texto plano.
 """
 
-from fastapi import FastAPI
+import logging
+from contextlib import asynccontextmanager
 
-from src.api.gateway import router as documents_router
-from src.services.ms3_client import lifespan
+from src.config.config import get_settings
+from src.core.logging_config import configure_logging
+
+# Nombre del servicio: identifica el origen de cada registro.
+SERVICE_NAME = "ms1-gateway"
+
+# 1) Logging centralizado: formato JSON, stdout/stderr y nivel desde Settings.
+configure_logging(SERVICE_NAME, level=get_settings().LOG_LEVEL)
+
+# 2) Dependencias de la aplicación (importadas con el logging ya configurado).
+from fastapi import FastAPI  # noqa: E402
+
+from src.api.gateway import router as documents_router  # noqa: E402
+from src.services.ms3_client import lifespan  # noqa: E402
 
 app = FastAPI(
     title="PDF API Gateway (MS1)",
