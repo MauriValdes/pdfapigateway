@@ -31,5 +31,5 @@ dist/
 # --- Docker y despliegue individual (pertenecen a cada repo, no a la imagen) ---
 # El Dockerfile de MS1 SÍ se versiona en este repositorio; no ignorarlo
 !.Dockerfile
-.dockerignore
+!.dockerignore
 docker-compose*.yml

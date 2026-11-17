@@ -88,7 +88,7 @@ Tecnologías
 - uvicorn (servidor ASGI)
 - httpx (cliente HTTP asíncrono hacia MS3)
 - pydantic-settings (configuración mediante variables de entorno)
-- python-dotenv (carga de variables de entorno en desarrollo)
+- uv (`uv run --env-file` para cargar la configuración local de desarrollo)
 - pytest / pytest-asyncio (tests)
 
 Estructura del proyecto
@@ -97,7 +97,6 @@ pdfapigateway/
 ├── Dockerfile
 ├── pyproject.toml
 ├── uv.lock
-├── .env.example
 ├── README.md
 └── src/
     ├── __init__.py
@@ -135,7 +134,7 @@ Endpoints
 - Códigos de estado propagados desde MS3: `201` (creado), `400` (archivo no PDF o vacío), `413` (archivo demasiado grande), `500` (error interno de MS3).
 - Ejemplo con curl (PowerShell):
   ```powershell
-  Invoke-RestMethod -Uri "http://localhost:8003/documents/" -Method Post -Form @{ file = Get-Item ".\document.pdf" }
+  Invoke-RestMethod -Uri "http://localhost:8080/documents/" -Method Post -Form @{ file = Get-Item ".\document.pdf" }
   ```
 
 **GET `/documents`** — Listar documentos
@@ -143,7 +142,7 @@ Endpoints
 - Códigos de estado propagados: `200` (éxito), `500` (error interno de MS3).
 - Ejemplo con curl (PowerShell):
   ```powershell
-  Invoke-RestMethod -Uri "http://localhost:8003/documents" -Method Get
+  Invoke-RestMethod -Uri "http://localhost:8080/documents" -Method Get
   ```
 
 **GET `/documents/{document_id}`** — Consultar documento
@@ -179,29 +178,36 @@ Variables de entorno
 |----------|----------------------------|-------------|-------------|
 | `MS3_URL` | `http://localhost:8001` | URL base de MS3 (solo la base, sin `/documents`) | No |
 | `MS3_TIMEOUT` | `40` | Timeout (s) para llamadas a MS3. Debe ser mayor que `EXTRACT_SERVICE_TIMEOUT` de MS3 (30s) | No |
-| `APP_PORT` | `8000` | Puerto interno del contenedor MS1 | No |
-| `HOST_PORT` | `8003` | Puerto publicado en el host | No |
 | `LOG_LEVEL` | `INFO` | Nivel de logging (DEBUG, INFO, WARNING, ERROR, CRITICAL) | No |
+
+El listener de MS1 usa el puerto interno `8000`. En el Compose integrado, el
+acceso público se realiza por Traefik en `127.0.0.1:8080`
+(`TRAEFIK_PUBLIC_HOST_PORT`); MS1 no consume variables `APP_PORT` ni `HOST_PORT`.
 
 **Diferencia entre URL local y URL interna de Docker:**
 - Ejecución local (fuera de Docker): `MS3_URL=http://localhost:8001` (puerto publicado de MS3 en el host).
 - Dentro de Docker: `MS3_URL=http://crud-service:8000` (nombre del servicio + puerto interno de MS3).
 
+En ejecución local, cargar las variables del archivo central mediante
+`uv run --env-file ../pdfinfraestructure/.env`. En la integración, Compose toma
+`MS3_URL_DOCKER` de ese mismo archivo y lo inyecta como `MS3_URL`; el servicio
+no carga archivos `.env` por su cuenta.
+
 No incluir credenciales ni secretos en este archivo. Las credenciales de MongoDB residen en el `.env` de la raíz de integración y solo se usan por MS3.
 
-Archivo de ejemplo: `pdfapigateway/.env.example` (contiene todos los valores de ejemplo).
+La configuración de desarrollo se centraliza en `../pdfinfraestructure/.env.example`.
 
 Instalación y ejecución
 -----------------------
 
 ### Ejecución local (fuera de Docker)
 
-Desde la carpeta `pdfapigateway/`:
+Desde la carpeta `pdfapigateway/`, crear primero `pdfinfraestructure/.env`
+copiando su `.env.example`. Para iniciar MS1 localmente:
 
 ```powershell
 uv sync --dev
-Copy-Item .env.example .env
-uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+uv run --env-file ../pdfinfraestructure/.env uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 La aplicación estará disponible en `http://localhost:8000`.
@@ -215,8 +221,10 @@ Desde la carpeta raíz `Integracion/`:
 docker compose -f docker-compose.integration.yml up -d
 ```
 
-MS1 estará publicado en el host en el puerto `8003` (contenedor interno `8000`).
-Endpoint de verificación: `GET http://localhost:8003/health`
+MS1 se alcanza a través de Traefik público en
+`http://localhost:${TRAEFIK_PUBLIC_HOST_PORT:-8080}` (por defecto,
+`http://localhost:8080`). Endpoint de verificación:
+`GET http://localhost:8080/health`.
 
 ### Ejecución de pruebas
 
@@ -232,12 +240,13 @@ resultado puede cambiar con modificaciones futuras del código.
 Puertos, redes y volúmenes
 --------------------------
 
-| Servicio | Puerto interno (contenedor) | Puerto publicado (host) |
-|----------|----------------------------|-------------------------|
-| MS1 (gateway-service) | 8000 | 8003 |
-| MS3 (crud-service) | 8000 | 8001 |
-| MS2 (extract-service) | 8000 | 8002 |
-| MongoDB (db) | 27017 | 27018 |
+| Servicio | Puerto interno | Publicación en Compose integrado |
+|----------|-----------------|-------------------------------|
+| Traefik público | 80 | `127.0.0.1:8080` (configurable con `TRAEFIK_PUBLIC_HOST_PORT`) |
+| MS1 (gateway-service) | 8000 | Sin publicación directa; acceso a través de Traefik |
+| MS3 (crud-service) | 8000 | Sin publicación directa |
+| MS2 (extract-service) | 8000 | Sin publicación directa; acceso interno a través de Traefik |
+| MongoDB (db) | 27017 | Sin publicación al host |
 
 ### Redes Docker
 
